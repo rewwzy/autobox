@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'main_page.dart'; // Chúng ta sẽ tạo file này ở bước 4
+import 'main_page.dart';
 
 class ActivationScreen extends StatefulWidget {
   const ActivationScreen({Key? key}) : super(key: key);

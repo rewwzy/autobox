@@ -19,7 +19,7 @@ class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
   bool _isRecording = false;
   String? _detectedBarcode; // Lưu mã đơn hàng tìm thấy
-  String _selectedOrderType = "GIAO_HANG"; // Mặc định loại đơn
+  String _selectedOrderType = "DONG_HANG"; // Mặc định loại đơn
 
   // AI Scanner
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
