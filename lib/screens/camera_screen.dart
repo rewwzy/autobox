@@ -141,7 +141,19 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _saveVideoFile(XFile tempFile) async {
     // 1. Lấy đường dẫn thư mục lưu trữ
-    final directory = await getApplicationDocumentsDirectory();
+    Directory? directory;
+    if (Platform.isAndroid) {
+      // This gets /storage/emulated/0/Android/data/com.example.app/files
+      // To save to the ROOT storage, you might need a different approach or
+      // simply use this to ensure it's on the SD card/User storage area.
+      directory = await getExternalStorageDirectory();
+    } else {
+      directory = await getApplicationDocumentsDirectory();
+    }
+
+    if (directory == null) {
+      throw Exception("Could not access storage directory");
+    }
     final String path = directory.path;
 
     // 2. Tạo tên file theo format: Loại đơn - Mã đơn - Thời gian
@@ -157,7 +169,7 @@ class _CameraScreenState extends State<CameraScreen> {
     await file.copy(newPath);
 
     // (Tùy chọn) Xóa file tạm
-    // await file.delete();
+    await file.delete();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Đã lưu: $newFileName")),
