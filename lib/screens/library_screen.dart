@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/video_model.dart';
-import 'video_player_screen.dart'; // Chúng ta sẽ tạo file này ở bước 4
+import 'video_player_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({Key? key}) : super(key: key);

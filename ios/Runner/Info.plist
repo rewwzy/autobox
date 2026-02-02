@@ -8,6 +8,17 @@
 	<string>Autobox</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Chúng tôi cần quyền truy cập thư viện ảnh để lưu video bạn đã quay.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Chúng tôi cần quyền thêm video vào thư viện ảnh của bạn.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Chúng tôi cần sử dụng camera để quay video.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Chúng tôi cần sử dụng micro để thu âm thanh cho video.</string>
+
+
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -45,5 +56,6 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
 </dict>
 </plist>
