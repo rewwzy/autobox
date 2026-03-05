@@ -19,25 +19,27 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
   bool _isRecording = false;
-  String? _detectedBarcode; // Lưu mã đơn hàng tìm thấy
-  String _selectedOrderType = "DONG_HANG"; // Mặc định loại đơn
+  String? _detectedBarcode; 
+  String _selectedOrderType = "DONG_HANG"; 
   bool _permissionsGranted = false;
+  String _errorText = "";
+  List<CameraDescription> _availableCameras = [];
 
-  // AI Scanner
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
   bool _isScanning = false;
 
   @override
   void initState() {
     super.initState();
+    _availableCameras = widget.cameras;
     _requestPermissions();
   }
 
   Future<void> _requestPermissions() async {
+    // Yêu cầu các quyền cần thiết
     Map<Permission, PermissionStatus> statuses = await [
       Permission.camera,
       Permission.microphone,
-      Permission.storage,
       Permission.photos,
     ].request();
 
@@ -48,51 +50,72 @@ class _CameraScreenState extends State<CameraScreen> {
       });
       _initializeCamera();
     } else {
-      // Thông báo cho người dùng nếu không cấp quyền
       if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Cần cấp quyền"),
-            content: const Text("Ứng dụng cần quyền Camera và Microphone để hoạt động."),
-            actions: [
-              TextButton(
-                onPressed: () => openAppSettings(),
-                child: const Text("Mở cài đặt"),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Đóng"),
-              ),
-            ],
-          ),
-        );
+        _showPermissionDialog();
       }
     }
   }
 
-  Future<void> _initializeCamera() async {
-    if (widget.cameras.isEmpty) return;
-    
-    // Chọn camera sau
-    final camera = widget.cameras.firstWhere(
-            (cam) => cam.lensDirection == CameraLensDirection.back,
-        orElse: () => widget.cameras.first);
-
-    _controller = CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: true,
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Cần cấp quyền"),
+        content: const Text("Ứng dụng cần quyền Camera và Microphone để quay video đơn hàng."),
+        actions: [
+          TextButton(
+            onPressed: () => openAppSettings(),
+            child: const Text("Mở cài đặt"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Đóng"),
+          ),
+        ],
+      ),
     );
+  }
 
+  Future<void> _initializeCamera() async {
     try {
+      // Nếu danh sách camera truyền vào trống, thử quét lại
+      if (_availableCameras.isEmpty) {
+        _availableCameras = await availableCameras();
+      }
+
+      if (_availableCameras.isEmpty) {
+        setState(() {
+          _errorText = "Không tìm thấy camera nào.\n(Lưu ý: iOS Simulator không hỗ trợ camera, hãy dùng thiết bị thật)";
+        });
+        return;
+      }
+      
+      final camera = _availableCameras.firstWhere(
+              (cam) => cam.lensDirection == CameraLensDirection.back,
+          orElse: () => _availableCameras.first);
+
+      _controller = CameraController(
+        camera,
+        ResolutionPreset.high,
+        enableAudio: true,
+        imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
+      );
+
       await _controller!.initialize();
+      
       if (mounted) {
         setState(() {});
-        _startImageStream();
+        // Đợi một chút để preview ổn định trước khi start stream
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && _controller!.value.isInitialized) {
+             _startImageStream();
+          }
+        });
       }
     } catch (e) {
-      print("Lỗi khởi tạo camera: $e");
+      setState(() {
+        _errorText = "Lỗi khởi tạo camera: $e";
+      });
     }
   }
 
@@ -101,7 +124,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
 
     _controller!.startImageStream((CameraImage image) async {
-      if (DateTime.now().difference(_lastScanTime).inMilliseconds < 500) {
+      if (DateTime.now().difference(_lastScanTime).inMilliseconds < 800) {
         return;
       }
       _lastScanTime = DateTime.now();
@@ -120,7 +143,6 @@ class _CameraScreenState extends State<CameraScreen> {
             if (code != null && code != _detectedBarcode) {
               setState(() {
                 _detectedBarcode = code;
-                print("Đã tìm thấy mã: $code");
               });
             }
           }
@@ -134,56 +156,51 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _startRecording() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    if (_isRecording) return;
-
+    if (_controller == null || !_controller!.value.isInitialized || _isRecording) return;
     try {
       await _controller!.startVideoRecording();
-      setState(() {
-        _isRecording = true;
-      });
+      setState(() => _isRecording = true);
     } catch (e) {
-      print(e);
+      print("Lỗi bắt đầu quay: $e");
     }
   }
 
   Future<void> _stopRecording() async {
     if (_controller == null || !_isRecording) return;
-
     try {
       final XFile videoFile = await _controller!.stopVideoRecording();
-      setState(() {
-        _isRecording = false;
-      });
+      setState(() => _isRecording = false);
       await _saveVideoFile(videoFile);
     } catch (e) {
-      print(e);
+      print("Lỗi dừng quay: $e");
     }
   }
 
   Future<void> _saveVideoFile(XFile tempFile) async {
-    Directory? directory;
-    if (Platform.isAndroid) {
-      directory = await getExternalStorageDirectory();
-    } else {
-      directory = await getApplicationDocumentsDirectory();
+    try {
+      Directory? directory = Platform.isAndroid 
+          ? await getExternalStorageDirectory() 
+          : await getApplicationDocumentsDirectory();
+
+      if (directory == null) return;
+      
+      final String orderCode = _detectedBarcode ?? "NO_CODE";
+      final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final String newFileName = "$_selectedOrderType-$orderCode-$timestamp.mp4";
+      final String newPath = '${directory.path}/$newFileName';
+
+      final File file = File(tempFile.path);
+      await file.copy(newPath);
+      await file.delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Đã lưu video: $newFileName")),
+        );
+      }
+    } catch (e) {
+      print("Lỗi lưu file: $e");
     }
-
-    if (directory == null) return;
-    
-    final String path = directory.path;
-    final String orderCode = _detectedBarcode ?? "NO_CODE";
-    final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final String newFileName = "$_selectedOrderType-$orderCode-$timestamp.mp4";
-    final String newPath = '$path/$newFileName';
-
-    final File file = File(tempFile.path);
-    await file.copy(newPath);
-    await file.delete();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Đã lưu: $newFileName")),
-    );
   }
 
   @override
@@ -195,73 +212,105 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_permissionsGranted) {
-      return const Scaffold(
-        body: Center(child: Text("Đang chờ cấp quyền...")),
+    if (_errorText.isNotEmpty) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Text(_errorText, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 16)),
+          ),
+        ),
       );
+    }
+
+    if (!_permissionsGranted) {
+      return const Scaffold(body: Center(child: Text("Đang kiểm tra quyền truy cập...")));
     }
 
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: CameraPreview(_controller!)),
-          Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              color: Colors.black54,
-              child: Text(
-                "Mã đơn: ${_detectedBarcode ?? 'Đang quét...'}",
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-                textAlign: TextAlign.center,
+          Positioned.fill(
+            child: Center(
+              child: CameraPreview(_controller!),
+            ),
+          ),
+          // Overlay giao diện quét
+          _buildUIOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUIOverlay() {
+    return Column(
+      children: [
+        const SizedBox(height: 50),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            "Mã đơn: ${_detectedBarcode ?? 'Đang quét...'}",
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const Spacer(),
+        _buildControls(),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
+  Widget _buildControls() {
+    return Column(
+      children: [
+        DropdownButton<String>(
+          value: _selectedOrderType,
+          dropdownColor: Colors.black,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          items: <String>['GIAO_HANG', 'HOAN_DON', 'DONG_GOI', 'DONG_HANG']
+              .map((val) => DropdownMenuItem(value: val, child: Text(val)))
+              .toList(),
+          onChanged: (val) => setState(() => _selectedOrderType = val!),
+        ),
+        const SizedBox(height: 20),
+        GestureDetector(
+          onTap: _isRecording ? _stopRecording : _startRecording,
+          child: Container(
+            height: 80,
+            width: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 4),
+            ),
+            child: Center(
+              child: Container(
+                height: _isRecording ? 30 : 60,
+                width: _isRecording ? 30 : 60,
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(_isRecording ? 5 : 30),
+                ),
               ),
             ),
           ),
-          Positioned(
-            bottom: 30,
-            left: 0,
-            right: 0,
-            child: Column(
-              children: [
-                DropdownButton<String>(
-                  value: _selectedOrderType,
-                  dropdownColor: Colors.black,
-                  style: const TextStyle(color: Colors.white),
-                  items: <String>['GIAO_HANG', 'HOAN_DON', 'DONG_GOI']
-                      .map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    setState(() {
-                      _selectedOrderType = val!;
-                    });
-                  },
-                ),
-                const SizedBox(height: 20),
-                FloatingActionButton(
-                  backgroundColor: _isRecording ? Colors.red : Colors.white,
-                  onPressed: _isRecording ? _stopRecording : _startRecording,
-                  child: Icon(
-                    _isRecording ? Icons.stop : Icons.videocam,
-                    color: _isRecording ? Colors.white : Colors.red,
-                  ),
-                ),
-              ],
-            ),
-          )
-        ],
-      ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          _isRecording ? "ĐANG QUAY" : "NHẤN ĐỂ QUAY",
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 }
