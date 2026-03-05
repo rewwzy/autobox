@@ -8,6 +8,8 @@ class VideoModel {
   final String orderCode; // Mã đơn
   final String dateRecorded; // Ngày quay
   final DateTime timestamp; // Dùng để sắp xếp
+  final String fileSize; // Kích thước file (ví dụ: 1.2 MB)
+  final String quality; // Độ phân giải (ví dụ: 1080, 720)
 
   VideoModel({
     required this.file,
@@ -16,26 +18,44 @@ class VideoModel {
     required this.orderCode,
     required this.dateRecorded,
     required this.timestamp,
+    required this.fileSize,
+    required this.quality,
   });
 
   // Factory để parse từ File thực tế
   factory VideoModel.fromFile(File file) {
     String name = file.path.split(Platform.pathSeparator).last;
-    // Format: TYPE-CODE-DATE.mp4
-    // Ví dụ: GIAO_HANG-DH123-20231025_103000.mp4
+    // Format cũ: TYPE-CODE-DATE.mp4
+    // Format mới: TYPE-CODE-DATE-RESOLUTION.mp4
 
     String nameWithoutExt = name.replaceAll('.mp4', '');
     List<String> parts = nameWithoutExt.split('-');
+    
+    // Tính kích thước file
+    String sizeStr = "0 KB";
+    try {
+      int bytes = file.lengthSync();
+      if (bytes < 1024) {
+        sizeStr = "$bytes B";
+      } else if (bytes < 1024 * 1024) {
+        sizeStr = "${(bytes / 1024).toStringAsFixed(1)} KB";
+      } else {
+        sizeStr = "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+      }
+    } catch (e) {
+      print("Lỗi tính dung lượng: $e");
+    }
+
+    String qualityStr = "HD";
+    if (parts.length >= 4) {
+      qualityStr = parts[3];
+      // Nếu là số thì thêm chữ p (ví dụ 1080p)
+      if (RegExp(r'^\d+$').hasMatch(qualityStr)) {
+        qualityStr = "${qualityStr}p";
+      }
+    }
 
     if (parts.length >= 3) {
-      // Parse ngày tháng từ chuỗi 20231025_103000
-      // Logic đơn giản để lấy DateTime sorting
-      DateTime time = DateTime.now(); // Fallback
-      try {
-        // format đơn giản: yyyyMMdd_HHmmss
-        // Bạn có thể dùng DateFormat của intl để parse chính xác hơn
-      } catch (e) {}
-
       return VideoModel(
         file: file,
         fileName: name,
@@ -43,9 +63,10 @@ class VideoModel {
         orderCode: parts[1],
         dateRecorded: parts[2].replaceAll('_', ' '), // Hiển thị đẹp hơn
         timestamp: file.lastModifiedSync(),
+        fileSize: sizeStr,
+        quality: qualityStr,
       );
     } else {
-      // Trường hợp file lỗi hoặc không đúng định dạng
       return VideoModel(
         file: file,
         fileName: name,
@@ -53,6 +74,8 @@ class VideoModel {
         orderCode: "N/A",
         dateRecorded: "N/A",
         timestamp: file.lastModifiedSync(),
+        fileSize: sizeStr,
+        quality: "N/A",
       );
     }
   }

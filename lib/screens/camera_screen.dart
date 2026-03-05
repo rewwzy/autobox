@@ -5,6 +5,7 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:gal/gal.dart';
 
 import '../utils/camera_utils.dart';
 
@@ -25,6 +26,8 @@ class _CameraScreenState extends State<CameraScreen> {
   String _errorText = "";
   List<CameraDescription> _availableCameras = [];
 
+  ResolutionPreset _selectedResolution = ResolutionPreset.high;
+
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
   bool _isScanning = false;
 
@@ -36,7 +39,6 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _requestPermissions() async {
-    // Yêu cầu các quyền cần thiết
     Map<Permission, PermissionStatus> statuses = await [
       Permission.camera,
       Permission.microphone,
@@ -61,7 +63,7 @@ class _CameraScreenState extends State<CameraScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Cần cấp quyền"),
-        content: const Text("Ứng dụng cần quyền Camera và Microphone để quay video đơn hàng."),
+        content: const Text("Ứng dụng cần quyền Camera, Microphone và Ảnh để hoạt động."),
         actions: [
           TextButton(
             onPressed: () => openAppSettings(),
@@ -78,14 +80,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initializeCamera() async {
     try {
-      // Nếu danh sách camera truyền vào trống, thử quét lại
       if (_availableCameras.isEmpty) {
         _availableCameras = await availableCameras();
       }
 
       if (_availableCameras.isEmpty) {
         setState(() {
-          _errorText = "Không tìm thấy camera nào.\n(Lưu ý: iOS Simulator không hỗ trợ camera, hãy dùng thiết bị thật)";
+          _errorText = "Không tìm thấy camera nào.\n(Lưu ý: iOS Simulator không hỗ trợ camera)";
         });
         return;
       }
@@ -94,9 +95,13 @@ class _CameraScreenState extends State<CameraScreen> {
               (cam) => cam.lensDirection == CameraLensDirection.back,
           orElse: () => _availableCameras.first);
 
+      if (_controller != null) {
+        await _controller!.dispose();
+      }
+
       _controller = CameraController(
         camera,
-        ResolutionPreset.high,
+        _selectedResolution,
         enableAudio: true,
         imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
       );
@@ -105,7 +110,6 @@ class _CameraScreenState extends State<CameraScreen> {
       
       if (mounted) {
         setState(() {});
-        // Đợi một chút để preview ổn định trước khi start stream
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted && _controller!.value.isInitialized) {
              _startImageStream();
@@ -186,18 +190,29 @@ class _CameraScreenState extends State<CameraScreen> {
       
       final String orderCode = _detectedBarcode ?? "NO_CODE";
       final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final String newFileName = "$_selectedOrderType-$orderCode-$timestamp.mp4";
+      
+      String resolution = "HD";
+      if (_controller != null && _controller!.value.previewSize != null) {
+        resolution = "${_controller!.value.previewSize!.width.toInt()}";
+      }
+
+      final String newFileName = "$_selectedOrderType-$orderCode-$timestamp-$resolution.mp4";
       final String newPath = '${directory.path}/$newFileName';
 
       final File file = File(tempFile.path);
       await file.copy(newPath);
+
+      bool hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        hasAccess = await Gal.requestAccess();
+      }
+
+      if (hasAccess) {
+        await Gal.putVideo(newPath);
+      }
+
       await file.delete();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Đã lưu video: $newFileName")),
-        );
-      }
     } catch (e) {
       print("Lỗi lưu file: $e");
     }
@@ -231,16 +246,23 @@ class _CameraScreenState extends State<CameraScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final size = MediaQuery.of(context).size;
+    final deviceRatio = size.width / size.height;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: Center(
-              child: CameraPreview(_controller!),
+          Center(
+            child: Transform.scale(
+              scale: _controller!.value.aspectRatio / deviceRatio,
+              child: AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio,
+                child: CameraPreview(_controller!),
+              ),
             ),
           ),
-          // Overlay giao diện quét
           _buildUIOverlay(),
         ],
       ),
@@ -248,40 +270,85 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildUIOverlay() {
-    return Column(
-      children: [
-        const SizedBox(height: 50),
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(8),
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildResolutionSelector(),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    "Mã: ${_detectedBarcode ?? '...'}",
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Text(
-            "Mã đơn: ${_detectedBarcode ?? 'Đang quét...'}",
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const Spacer(),
-        _buildControls(),
-        const SizedBox(height: 30),
-      ],
+          const Spacer(),
+          _buildControls(),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResolutionSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButton<ResolutionPreset>(
+        value: _selectedResolution,
+        dropdownColor: Colors.black,
+        underline: const SizedBox(),
+        icon: const Icon(Icons.hd, color: Colors.white),
+        items: [
+          const DropdownMenuItem(value: ResolutionPreset.low, child: Text("240p", style: TextStyle(color: Colors.white))),
+          const DropdownMenuItem(value: ResolutionPreset.medium, child: Text("480p", style: TextStyle(color: Colors.white))),
+          const DropdownMenuItem(value: ResolutionPreset.high, child: Text("720p", style: TextStyle(color: Colors.white))),
+          const DropdownMenuItem(value: ResolutionPreset.veryHigh, child: Text("1080p", style: TextStyle(color: Colors.white))),
+          const DropdownMenuItem(value: ResolutionPreset.ultraHigh, child: Text("4K", style: TextStyle(color: Colors.white))),
+        ],
+        onChanged: _isRecording ? null : (val) {
+          if (val != null) {
+            setState(() => _selectedResolution = val);
+            _initializeCamera();
+          }
+        },
+      ),
     );
   }
 
   Widget _buildControls() {
     return Column(
       children: [
-        DropdownButton<String>(
-          value: _selectedOrderType,
-          dropdownColor: Colors.black,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-          items: <String>['GIAO_HANG', 'HOAN_DON', 'DONG_GOI', 'DONG_HANG']
-              .map((val) => DropdownMenuItem(value: val, child: Text(val)))
-              .toList(),
-          onChanged: (val) => setState(() => _selectedOrderType = val!),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.black45,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: DropdownButton<String>(
+            value: _selectedOrderType,
+            dropdownColor: Colors.black,
+            underline: const SizedBox(),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            items: <String>['GIAO_HANG', 'HOAN_DON', 'DONG_GOI', 'DONG_HANG']
+                .map((val) => DropdownMenuItem(value: val, child: Text(val)))
+                .toList(),
+            onChanged: (val) => setState(() => _selectedOrderType = val!),
+          ),
         ),
         const SizedBox(height: 20),
         GestureDetector(
@@ -294,7 +361,8 @@ class _CameraScreenState extends State<CameraScreen> {
               border: Border.all(color: Colors.white, width: 4),
             ),
             child: Center(
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 height: _isRecording ? 30 : 60,
                 width: _isRecording ? 30 : 60,
                 decoration: BoxDecoration(
@@ -308,7 +376,9 @@ class _CameraScreenState extends State<CameraScreen> {
         const SizedBox(height: 10),
         Text(
           _isRecording ? "ĐANG QUAY" : "NHẤN ĐỂ QUAY",
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, shadows: [
+            Shadow(blurRadius: 5, color: Colors.black, offset: Offset(1, 1))
+          ]),
         ),
       ],
     );

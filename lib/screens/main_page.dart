@@ -4,7 +4,6 @@ import 'camera_screen.dart';
 import 'library_screen.dart';
 import 'menu_screen.dart';
 
-// Biến toàn cục để chứa danh sách camera (được lấy từ main.dart)
 List<CameraDescription> globalCameras = [];
 
 class MainPage extends StatefulWidget {
@@ -16,26 +15,19 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
-
-  // Danh sách các màn hình
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _pages = [
-      CameraScreen(cameras: globalCameras), // Tab 0: Quay phim
-      const LibraryScreen(),                // Tab 1: Thư viện
-      const MenuScreen(),                   // Tab 2: Menu
-    ];
-  }
+  // Sử dụng GlobalKey để truy cập vào State của LibraryScreen
+  final GlobalKey<LibraryScreenState> _libraryKey = GlobalKey<LibraryScreenState>();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages, // Dùng IndexedStack để giữ trạng thái của Camera khi chuyển tab
+        children: [
+          CameraScreen(cameras: globalCameras),
+          LibraryScreen(key: _libraryKey), // Gán key vào đây
+          const MenuScreen(),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -43,20 +35,15 @@ class _MainPageState extends State<MainPage> {
           setState(() {
             _currentIndex = index;
           });
+          // Nếu chuyển sang tab Thư viện (index 1), gọi hàm refresh
+          if (index == 1) {
+            _libraryKey.currentState?.refresh();
+          }
         },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt),
-            label: 'Quay Đơn',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.video_library),
-            label: 'Thư viện',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Menu',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'Quay Đơn'),
+          BottomNavigationBarItem(icon: Icon(Icons.video_library), label: 'Thư viện'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Menu'),
         ],
       ),
     );

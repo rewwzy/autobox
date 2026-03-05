@@ -12,7 +12,6 @@ class MenuScreen extends StatefulWidget {
 class _MenuScreenState extends State<MenuScreen> {
   final AuthService _authService = AuthService();
   Map<String, String> _licenseInfo = {"key": "...", "expiry": "..."};
-  String _videoQuality = "High (1080p)"; // Demo setting
 
   @override
   void initState() {
@@ -59,22 +58,6 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
 
           const Divider(),
-
-          // Phần cài đặt Video
-          ListTile(
-            leading: const Icon(Icons.video_settings),
-            title: const Text("Chất lượng Video"),
-            subtitle: Text(_videoQuality),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              // Demo đổi chất lượng (Trong thực tế cần lưu vào Prefs và đọc ở CameraScreen)
-              setState(() {
-                _videoQuality = _videoQuality == "High (1080p)"
-                    ? "Medium (720p)"
-                    : "High (1080p)";
-              });
-            },
-          ),
 
           ListTile(
             leading: const Icon(Icons.storage),
