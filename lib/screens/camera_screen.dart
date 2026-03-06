@@ -5,6 +5,7 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/camera_utils.dart';
 
@@ -34,7 +35,25 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _availableCameras = widget.cameras;
-    _requestPermissions();
+    _loadSettings().then((_) => _requestPermissions());
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedResolution = prefs.getString('video_resolution');
+    if (savedResolution != null) {
+      setState(() {
+        _selectedResolution = ResolutionPreset.values.firstWhere(
+          (e) => e.toString() == savedResolution,
+          orElse: () => ResolutionPreset.high,
+        );
+      });
+    }
+  }
+
+  Future<void> _saveResolution(ResolutionPreset resolution) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('video_resolution', resolution.toString());
   }
 
   Future<void> _requestPermissions() async {
@@ -315,6 +334,7 @@ class _CameraScreenState extends State<CameraScreen> {
         onChanged: _isRecording ? null : (val) {
           if (val != null) {
             setState(() => _selectedResolution = val);
+            _saveResolution(val);
             _initializeCamera();
           }
         },
