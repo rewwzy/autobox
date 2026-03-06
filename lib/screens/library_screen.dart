@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/video_model.dart';
 import 'video_player_screen.dart';
 
@@ -30,6 +31,51 @@ class LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _loadVideos();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkFirstTime();
+    });
+  }
+
+  Future<void> _checkFirstTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool isFirstTime = prefs.getBool('first_time_library') ?? true;
+    if (isFirstTime) {
+      _showTutorial();
+      await prefs.setBool('first_time_library', false);
+    }
+  }
+
+  void _showTutorial() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: Colors.blue),
+            SizedBox(width: 10),
+            Text("Hướng dẫn Thư viện"),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              _TutorialItem(icon: Icons.search, text: "Tìm kiếm video theo mã đơn hoặc loại đơn hàng."),
+              _TutorialItem(icon: Icons.calendar_today, text: "Lọc video theo ngày hoặc khoảng ngày cụ thể."),
+              _TutorialItem(icon: Icons.touch_app, text: "Nhấn giữ một video để vào chế độ chọn và xóa hàng loạt."),
+              _TutorialItem(icon: Icons.delete_sweep, text: "Sử dụng menu góc trên để xóa nhanh tất cả video đang lọc."),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Đã hiểu"),
+          ),
+        ],
+      ),
+    );
   }
 
   void refresh() {
@@ -509,6 +555,27 @@ class LibraryScreenState extends State<LibraryScreen> {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TutorialItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _TutorialItem({Key? key, required this.icon, required this.text}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 24, color: Colors.blueGrey),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
         ],
       ),
     );

@@ -35,7 +35,54 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _availableCameras = widget.cameras;
-    _loadSettings().then((_) => _requestPermissions());
+    _loadSettings().then((_) {
+      _requestPermissions();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkFirstTime();
+      });
+    });
+  }
+
+  Future<void> _checkFirstTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool isFirstTime = prefs.getBool('first_time_camera') ?? true;
+    if (isFirstTime) {
+      _showTutorial();
+      await prefs.setBool('first_time_camera', false);
+    }
+  }
+
+  void _showTutorial() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: Colors.blue),
+            SizedBox(width: 10),
+            Text("Hướng dẫn Quay Video"),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              _TutorialItem(icon: Icons.hd, text: "Chọn độ phân giải (240p - 4K) ở góc trên bên trái."),
+              _TutorialItem(icon: Icons.qr_code_scanner, text: "Đưa mã vận đơn vào khung hình để tự động quét mã."),
+              _TutorialItem(icon: Icons.list_alt, text: "Chọn loại đơn hàng (Giao, Hoàn, Đóng gói...) ở phía dưới."),
+              _TutorialItem(icon: Icons.videocam, text: "Nhấn nút đỏ để bắt đầu quay. Video sẽ tự động lưu kèm mã đơn."),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Đã hiểu"),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadSettings() async {
@@ -199,7 +246,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _saveVideoFile(XFile tempFile) async {
     try {
-      // Sử dụng getApplicationDocumentsDirectory để lưu vào bộ nhớ riêng của app
       final Directory directory = await getApplicationDocumentsDirectory();
       
       final String orderCode = _detectedBarcode ?? "NO_CODE";
@@ -213,13 +259,11 @@ class _CameraScreenState extends State<CameraScreen> {
       final String newFileName = "$_selectedOrderType-$orderCode-$timestamp-$resolution.mp4";
       final String newPath = '${directory.path}/$newFileName';
 
-      // Copy file từ thư mục tạm sang thư mục lưu trữ của app
       final File file = File(tempFile.path);
       await file.copy(newPath);
 
       print("Video đã được lưu tại: $newPath");
 
-      // Xóa file tạm của camera controller sau khi đã copy
       if (await file.exists()) {
         await file.delete();
       }
@@ -393,6 +437,27 @@ class _CameraScreenState extends State<CameraScreen> {
           ]),
         ),
       ],
+    );
+  }
+}
+
+class _TutorialItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _TutorialItem({Key? key, required this.icon, required this.text}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 24, color: Colors.blueGrey),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
     );
   }
 }
