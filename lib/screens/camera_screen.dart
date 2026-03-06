@@ -20,7 +20,10 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
   bool _isRecording = false;
-  String? _detectedBarcode; 
+  
+  // Sử dụng ValueNotifier để tránh rebuild toàn bộ màn hình khi đổi mã barcode
+  final ValueNotifier<String?> _detectedBarcodeNotifier = ValueNotifier<String?>(null);
+  
   String _selectedOrderType = "DONG_HANG"; 
   bool _permissionsGranted = false;
   String _errorText = "";
@@ -208,10 +211,9 @@ class _CameraScreenState extends State<CameraScreen> {
           final barcodes = await _barcodeScanner.processImage(inputImage);
           if (barcodes.isNotEmpty) {
             final String? code = barcodes.first.rawValue;
-            if (code != null && code != _detectedBarcode) {
-              setState(() {
-                _detectedBarcode = code;
-              });
+            // Chỉ cập nhật ValueNotifier, không gọi setState toàn màn hình
+            if (code != null && code != _detectedBarcodeNotifier.value) {
+              _detectedBarcodeNotifier.value = code;
             }
           }
         }
@@ -248,7 +250,7 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final Directory directory = await getApplicationDocumentsDirectory();
       
-      final String orderCode = _detectedBarcode ?? "NO_CODE";
+      final String orderCode = _detectedBarcodeNotifier.value ?? "NO_CODE";
       final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       
       String resolution = "HD";
@@ -277,6 +279,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _controller?.dispose();
     _barcodeScanner.close();
+    _detectedBarcodeNotifier.dispose();
     super.dispose();
   }
 
@@ -334,16 +337,21 @@ class _CameraScreenState extends State<CameraScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildResolutionSelector(),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    "Mã: ${_detectedBarcode ?? '...'}",
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                ValueListenableBuilder<String?>(
+                  valueListenable: _detectedBarcodeNotifier,
+                  builder: (context, barcode, child) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "Mã: ${barcode ?? '...'}",
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  }
                 ),
               ],
             ),
@@ -368,12 +376,12 @@ class _CameraScreenState extends State<CameraScreen> {
         dropdownColor: Colors.black,
         underline: const SizedBox(),
         icon: const Icon(Icons.hd, color: Colors.white),
-        items: [
-          const DropdownMenuItem(value: ResolutionPreset.low, child: Text("240p", style: TextStyle(color: Colors.white))),
-          const DropdownMenuItem(value: ResolutionPreset.medium, child: Text("480p", style: TextStyle(color: Colors.white))),
-          const DropdownMenuItem(value: ResolutionPreset.high, child: Text("720p", style: TextStyle(color: Colors.white))),
-          const DropdownMenuItem(value: ResolutionPreset.veryHigh, child: Text("1080p", style: TextStyle(color: Colors.white))),
-          const DropdownMenuItem(value: ResolutionPreset.ultraHigh, child: Text("4K", style: TextStyle(color: Colors.white))),
+        items: const [
+          DropdownMenuItem(value: ResolutionPreset.low, child: Text("240p", style: TextStyle(color: Colors.white))),
+          DropdownMenuItem(value: ResolutionPreset.medium, child: Text("480p", style: TextStyle(color: Colors.white))),
+          DropdownMenuItem(value: ResolutionPreset.high, child: Text("720p", style: TextStyle(color: Colors.white))),
+          DropdownMenuItem(value: ResolutionPreset.veryHigh, child: Text("1080p", style: TextStyle(color: Colors.white))),
+          DropdownMenuItem(value: ResolutionPreset.ultraHigh, child: Text("4K", style: TextStyle(color: Colors.white))),
         ],
         onChanged: _isRecording ? null : (val) {
           if (val != null) {
