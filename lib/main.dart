@@ -1,7 +1,9 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/activation_screen.dart';
 import 'screens/main_page.dart';
+import 'screens/policy_screen.dart';
 import 'services/auth_service.dart';
 
 void main() async {
@@ -14,11 +16,18 @@ void main() async {
     print('Error: $e.code\nError Message: $e.message');
   }
 
-  // 2. Kiểm tra trạng thái Key bản quyền
+  // 2. Kiểm tra chính sách và bản quyền
+  final prefs = await SharedPreferences.getInstance();
+  final bool policyAccepted = prefs.getBool('policy_accepted') ?? false;
+
   final authService = AuthService();
   final bool isActivated = await authService.isLicenseValid();
 
-  runApp(MyApp(startScreen: isActivated ? const MainPage() : const ActivationScreen()));
+  final Widget nextScreen = isActivated ? const MainPage() : const ActivationScreen();
+
+  runApp(MyApp(
+    startScreen: policyAccepted ? nextScreen : PolicyScreen(nextScreen: nextScreen),
+  ));
 }
 
 class MyApp extends StatelessWidget {
