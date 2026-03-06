@@ -5,7 +5,6 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:gal/gal.dart';
 
 import '../utils/camera_utils.dart';
 
@@ -42,7 +41,6 @@ class _CameraScreenState extends State<CameraScreen> {
     Map<Permission, PermissionStatus> statuses = await [
       Permission.camera,
       Permission.microphone,
-      Permission.photos,
     ].request();
 
     if (statuses[Permission.camera]!.isGranted &&
@@ -63,7 +61,7 @@ class _CameraScreenState extends State<CameraScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Cần cấp quyền"),
-        content: const Text("Ứng dụng cần quyền Camera, Microphone và Ảnh để hoạt động."),
+        content: const Text("Ứng dụng cần quyền Camera và Microphone để hoạt động."),
         actions: [
           TextButton(
             onPressed: () => openAppSettings(),
@@ -182,11 +180,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _saveVideoFile(XFile tempFile) async {
     try {
-      Directory? directory = Platform.isAndroid 
-          ? await getExternalStorageDirectory() 
-          : await getApplicationDocumentsDirectory();
-
-      if (directory == null) return;
+      // Sử dụng getApplicationDocumentsDirectory để lưu vào bộ nhớ riêng của app
+      final Directory directory = await getApplicationDocumentsDirectory();
       
       final String orderCode = _detectedBarcode ?? "NO_CODE";
       final String timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
@@ -199,19 +194,16 @@ class _CameraScreenState extends State<CameraScreen> {
       final String newFileName = "$_selectedOrderType-$orderCode-$timestamp-$resolution.mp4";
       final String newPath = '${directory.path}/$newFileName';
 
+      // Copy file từ thư mục tạm sang thư mục lưu trữ của app
       final File file = File(tempFile.path);
       await file.copy(newPath);
 
-      bool hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        hasAccess = await Gal.requestAccess();
-      }
+      print("Video đã được lưu tại: $newPath");
 
-      if (hasAccess) {
-        await Gal.putVideo(newPath);
+      // Xóa file tạm của camera controller sau khi đã copy
+      if (await file.exists()) {
+        await file.delete();
       }
-
-      await file.delete();
 
     } catch (e) {
       print("Lỗi lưu file: $e");
